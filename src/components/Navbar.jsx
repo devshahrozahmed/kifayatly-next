@@ -1,0 +1,323 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import {
+  ChevronDown,
+  LayoutGrid,
+  Menu,
+  Search,
+  ShoppingBag,
+  Sparkles,
+  Store,
+  Tag,
+  X,
+} from 'lucide-react';
+
+import SearchField from '@/components/SearchField';
+import { useCart } from '@/context/CartContext';
+import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
+
+function NavbarContent({ categories }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const {
+    cartCount = 0,
+    activeCategory = 'all',
+    setActiveCategory = () => {},
+    isSidebarOpen = false,
+    setIsSidebarOpen = () => {},
+    openSidebar = () => {},
+    openCart = () => {},
+  } = useCart() || {};
+
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [allProducts, setAllProducts] = useState([]);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 250);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const handleClick = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsCategoriesOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const res = await fetch('/api/search-products');
+        if (!res.ok) return;
+        const data = await res.json();
+        setAllProducts(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to fetch search products', error);
+      }
+    };
+    fetchProducts();
+  }, []);
+
+  const suggestions = useMemo(() => {
+    if (!debouncedSearch.trim()) return [];
+    const term = debouncedSearch.toLowerCase();
+    return allProducts
+      .filter((product) => {
+        const name = (product.Name || product.name || '').toLowerCase();
+        const productCategories = Array.isArray(product.Category)
+          ? product.Category
+          : product.Category
+            ? [product.Category]
+            : [];
+        return (
+          name.includes(term) ||
+          productCategories.some((category) => (category || '').toLowerCase().includes(term))
+        );
+      })
+      .slice(0, 5)
+      .map((product) => ({
+        ...product,
+        onSelect: handleSuggestionClick,
+      }));
+  }, [allProducts, debouncedSearch]);
+
+  function handleSuggestionClick(product) {
+    const label = product.Name || product.name || '';
+    setSearchTerm(label);
+    setIsFocused(false);
+    setIsSearchOpen(false);
+    router.push(`/products?search=${encodeURIComponent(label)}`);
+  }
+
+  function handleCategoryClick(categoryId) {
+    setActiveCategory(categoryId);
+    setIsSidebarOpen(false);
+    setIsCategoriesOpen(false);
+    const url = categoryId === 'all' ? '/products' : `/products?category=${categoryId}`;
+    router.push(url);
+  }
+
+  function handleSearchSubmit(event) {
+    event.preventDefault();
+    if (!searchTerm.trim()) return;
+    setIsSearchOpen(false);
+    setIsFocused(false);
+    router.push(`/products?search=${encodeURIComponent(searchTerm.trim())}`);
+  }
+
+  function navLinkClass(path) {
+    return cn(
+      'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+      pathname === path
+        ? 'bg-primary text-primary-foreground'
+        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+    );
+  }
+
+  const mobileItems = [
+    { href: '/', label: 'Home', icon: Store },
+    { href: '/products', label: 'All Products', icon: LayoutGrid },
+  ];
+
+  return (
+    <div className="sticky top-0 z-40 border-b border-border/60 bg-card/95 backdrop-blur">
+      <div className="border-b border-border/60 bg-primary px-4 py-2 text-primary-foreground">
+        <div className="w-full overflow-hidden text-xs font-medium uppercase tracking-[0.16em]">
+          <div className="marquee-track gap-8 whitespace-nowrap">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="inline-flex items-center gap-8">
+                <span>Imported homeware with a refined finish</span>
+                <span className="inline-flex items-center gap-2">
+                  <Sparkles className="size-3.5" />
+                  Free delivery above Rs. 3000
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <header className="relative mx-auto flex h-16 max-w-7xl items-center gap-3 px-4">
+        <Button variant="ghost" size="icon" className="md:hidden" onClick={openSidebar} aria-label="Open menu">
+          <Menu />
+        </Button>
+
+        <Link href="/" className="flex min-w-0 items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Store className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold uppercase tracking-[0.12em] text-primary">China Unique</p>
+            <p className="truncate text-xs text-muted-foreground">Home and lifestyle store</p>
+          </div>
+        </Link>
+
+        <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 md:flex">
+          <Link href="/" className={navLinkClass('/')}>Home</Link>
+          <Link href="/products" className={navLinkClass('/products')}>All Products</Link>
+          <div className="relative" ref={dropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsCategoriesOpen((value) => !value)}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Categories
+              <ChevronDown className={cn('size-4 transition-transform', isCategoriesOpen && 'rotate-180')} />
+            </button>
+            {isCategoriesOpen ? (
+              <div className="absolute left-0 top-full mt-2 w-60 overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-[0_18px_50px_rgba(10,61,46,0.12)]">
+                <button
+                  type="button"
+                  onClick={() => handleCategoryClick('new-arrivals')}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                >
+                  <Sparkles className="size-4 text-accent-foreground" />
+                  New Arrivals
+                </button>
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => handleCategoryClick(category.id)}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                  >
+                    <Tag className="size-4 text-muted-foreground" />
+                    {category.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </nav>
+
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant={isSearchOpen ? 'secondary' : 'ghost'}
+            size="icon"
+            onClick={() => setIsSearchOpen((value) => !value)}
+            aria-label="Toggle search"
+          >
+            {isSearchOpen ? <X /> : <Search />}
+          </Button>
+          <button
+            type="button"
+            onClick={openCart}
+            className="relative inline-flex size-10 items-center justify-center rounded-lg border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-muted"
+            aria-label="Open cart"
+          >
+            <ShoppingBag className="size-4" />
+            {cartCount > 0 ? (
+              <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-5 items-center justify-center rounded-md bg-primary px-1.5 py-0.5 text-[11px] font-semibold leading-none text-primary-foreground">
+                {cartCount}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      </header>
+
+      {isSearchOpen ? (
+        <div className="border-t border-border/70 bg-background/85">
+          <div className="mx-auto max-w-4xl px-4 py-4">
+            <SearchField
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              onSubmit={handleSearchSubmit}
+              onClear={() => {
+                setSearchTerm('');
+                setIsFocused(false);
+              }}
+              onFocus={() => setIsFocused(true)}
+              isFocused={isFocused}
+              suggestions={suggestions}
+              emptyLabel={`No products found for "${debouncedSearch}"`}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+        <SheetContent side="left" className="w-[min(92vw,22rem)]">
+          <SheetHeader>
+            <SheetTitle>Browse the store</SheetTitle>
+            <SheetDescription>Navigation and category shortcuts in one place.</SheetDescription>
+          </SheetHeader>
+
+          <div className="flex flex-col gap-6 pt-2">
+            <div className="flex flex-col gap-2">
+              {mobileItems.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setIsSidebarOpen(false)}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors',
+                    pathname === href ? 'bg-primary text-primary-foreground' : 'bg-muted/60 text-foreground hover:bg-muted'
+                  )}
+                >
+                  <Icon className="size-4" />
+                  {label}
+                </Link>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <p className="px-1 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Categories</p>
+              <button
+                type="button"
+                onClick={() => handleCategoryClick('new-arrivals')}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors',
+                  activeCategory === 'new-arrivals' ? 'bg-primary text-primary-foreground' : 'bg-muted/60 text-foreground hover:bg-muted'
+                )}
+              >
+                <Sparkles className="size-4" />
+                New Arrivals
+              </button>
+              {categories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  onClick={() => handleCategoryClick(category.id)}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition-colors',
+                    activeCategory === category.id ? 'bg-primary text-primary-foreground' : 'bg-muted/60 text-foreground hover:bg-muted'
+                  )}
+                >
+                  <Tag className="size-4" />
+                  {category.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+export default function Navbar({ categories = [] }) {
+  return (
+    <Suspense fallback={<div className="h-16 border-b border-border bg-card" />}>
+      <NavbarContent categories={categories} />
+    </Suspense>
+  );
+}
